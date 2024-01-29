@@ -14,25 +14,28 @@ medv = housing['medv'].values
 rm = housing['rm'].values
 crim = housing['crim'].values
 indus = housing['indus'].values
+X = np.column_stack((rm,crim,indus))
 #b
-with pm.Model() as housing_model:
-  α = pm.Normal('α', mu=0, sigma=1000)
-  beta_rm = pm.Normal('beta_rm', mu=0, sd=10)
-  beta_crim = pm.Normal('beta_crim', mu=0, sd=10)
-  beta_indus = pm.Normal('beta_indus', mu=0, sd=10)
-  #modelul liniar
-  mu = beta_rm * rm + beta_crim * crim + beta_indus * indus
-  medv_pred = pm.Normal('medv', mu=mu, sd=1, observed='medv')
 
-  idata_mlr = pm.sample(1250, return_inferencedata=True)
+with pm.Model() as model_mlr:
+    α = pm.Normal('α', mu=0, sigma=1000)#am luat sigma=1000 deoarece nu am standardizat datele
+    β = pm.Normal('β', mu=0, sigma=1000, shape=2)
+    ϵ = pm.HalfCauchy('ϵ', 5000)
+    ν = pm.Exponential('ν', 1/30)
+    X_shared = pm.MutableData('x_shared',X)
+    μ = pm.Deterministic('μ',α + pm.math.dot(X_shared, β))
+ 
+    medv_pred = pm.StudentT('medv_pred', mu=μ, sigma=ϵ, nu=ν, observed='medv')
+
+    idata_mlr = pm.sample(1250, return_inferencedata=True)
 
 #c
-az.plot_forest(idata_mlr,hdi_prob=0.95,var_names=[beta_rm, beta_crim, beta_indus])
-az.summary(idata_mlr,hdi_prob=0.95,var_names=[beta_rm, beta_crim, beta_indus])
+az.plot_forest(idata_mlr,hdi_prob=0.95,var_names=[β])
+az.summary(idata_mlr,hdi_prob=0.95,var_names=[β])
 
 #d
 posterior_g = idata_mlr.posterior.stack(samples={"chain", "draw"}) #avem 5000 de extrageri in esantion (nr. draws x nr. chains)
-mu = posterior_g['α']+33*posterior_g[beta_rm, beta_crim, beta_indus][0]+np.log(540)*posterior_g[beta_rm, beta_crim, beta_indus][1]
+mu = posterior_g['α']+33*posterior_g[β][0]+np.log(540)*posterior_g[β][1]
 az.plot_posterior(mu.values,hdi_prob=0.5)
 
 
